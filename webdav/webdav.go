@@ -15,6 +15,9 @@ import (
 	"path"
 	"strings"
 	"time"
+	"io/ioutil"
+	"bytes"
+	"encoding/json"
 )
 
 type Handler struct {
@@ -208,7 +211,38 @@ func (h *Handler) handleGetHeadPost(w http.ResponseWriter, r *http.Request) (sta
 		return http.StatusNotFound, err
 	}
 	if fi.IsDir() {
-		return http.StatusMethodNotAllowed, nil
+		files, err := ioutil.ReadDir(reqPath)
+		if err!=nil{
+			return http.StatusInternalServerError, nil
+		}
+		list := []map[string]interface{}{}
+		for _, entry := range files {
+			var t string
+			if entry.IsDir() {
+				t = "directory"
+			} else {
+				t = "file"
+			}
+			f  := map[string]interface{}{
+				"name": entry.Name(),
+				"size": entry.Size(),
+				"mode": entry.Mode().String(),
+				"mtime": entry.ModTime(),
+				"isdir": entry.IsDir(),
+				"type": t,
+			}
+			list = append(list, f)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		buffer := new(bytes.Buffer)
+		encoder := json.NewEncoder(buffer)
+		encoder.SetIndent("", "\t")
+		err = encoder.Encode(list)
+		if err != nil {
+			return http.StatusInternalServerError, nil
+		}
+		w.Write([]byte(buffer.String()))
 	}
 	etag, err := findETag(ctx, h.FileSystem, h.LockSystem, reqPath, fi)
 	if err != nil {
